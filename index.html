@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タイマー</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7280;
+    --border: #d9dde3;
+    --primary: #2563eb;
+    --primary-text: #ffffff;
+    --work: #dc2626;
+    --break: #16a34a;
+    --btn: #eef0f3;
+    --btn-hover: #e2e5ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418;
+      --card: #1b1f24;
+      --text: #e6e8eb;
+      --muted: #9aa3ad;
+      --border: #333a42;
+      --primary: #3b82f6;
+      --btn: #262b31;
+      --btn-hover: #30363d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 32px 16px;
+  }
+  .app {
+    width: 100%;
+    max-width: 520px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 16px; text-align: center; }
+
+  .tabs { display: flex; gap: 4px; background: var(--btn); padding: 4px; border-radius: 10px; margin-bottom: 20px; }
+  .tab {
+    flex: 1; border: none; background: transparent; color: var(--muted);
+    padding: 10px 4px; border-radius: 8px; font-size: 0.95rem; cursor: pointer; font-weight: 600;
+    white-space: nowrap;
+  }
+  @media (max-width: 420px) { .tab { font-size: 0.85rem; } }
+  .tab.active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+  .phase { text-align: center; font-weight: 700; height: 1.5em; letter-spacing: .05em; }
+  .phase.work { color: var(--work); }
+  .phase.break { color: var(--break); }
+
+  .display {
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(3rem, 15vw, 4.75rem);
+    font-weight: 700;
+    text-align: center;
+    margin: 4px 0 4px;
+    letter-spacing: .02em;
+  }
+  .display.done { animation: blink 1s steps(2, start) infinite; color: var(--work); }
+  @keyframes blink { to { visibility: hidden; } }
+  .sub { text-align: center; color: var(--muted); font-size: .85rem; height: 1.4em; margin-bottom: 16px; }
+
+  .section { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
+  .label { font-size: .85rem; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+  .label.work { color: var(--work); }
+  .label.break { color: var(--break); }
+
+  .inputs { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 10px; }
+  .inputs input {
+    width: 64px; padding: 8px 4px; font-size: 1.25rem; text-align: center;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .inputs span { color: var(--muted); font-size: .85rem; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button.btn {
+    border: 1px solid var(--border); background: var(--btn); color: var(--text);
+    padding: 10px 16px; border-radius: 8px; font-size: .95rem; cursor: pointer; font-weight: 600;
+    min-width: 72px;
+  }
+  button.btn:hover { background: var(--btn-hover); }
+  button.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); min-width: 140px; }
+  button.btn.primary:hover { filter: brightness(1.08); }
+  button.btn.toggle.on { background: var(--break); border-color: var(--break); color: #fff; }
+  .controls { margin-top: 20px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>タイマー</h1>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-mode="normal" role="tab">通常モード</button>
+    <button class="tab" data-mode="pomodoro" role="tab">ポモドーロ・モード</button>
+  </div>
+
+  <div id="phase" class="phase"></div>
+  <div id="display" class="display">00:00:00</div>
+  <div id="sub" class="sub"></div>
+
+  <!-- 通常モード -->
+  <section id="normalPanel">
+    <div class="section">
+      <div class="label">時間を入力</div>
+      <div class="inputs">
+        <input id="nH" type="number" min="0" max="99" value="0" inputmode="numeric"><span>時</span>
+        <input id="nM" type="number" min="0" max="59" value="5" inputmode="numeric"><span>分</span>
+        <input id="nS" type="number" min="0" max="59" value="0" inputmode="numeric"><span>秒</span>
+      </div>
+      <div class="row">
+        <button class="btn" data-preset="300">5分</button>
+        <button class="btn" data-preset="600">10分</button>
+        <button class="btn" data-preset="1800">30分</button>
+      </div>
+    </div>
+    <div class="row controls">
+      <button id="nStart" class="btn primary">スタート</button>
+      <button id="nClear" class="btn">クリア</button>
+      <button id="nSet" class="btn">セット</button>
+    </div>
+  </section>
+
+  <!-- ポモドーロ・モード -->
+  <section id="pomoPanel" class="hidden">
+    <div class="section">
+      <div class="label work">実行時間</div>
+      <div class="inputs">
+        <input id="wH" type="number" min="0" max="99" value="0" inputmode="numeric"><span>時</span>
+        <input id="wM" type="number" min="0" max="59" value="25" inputmode="numeric"><span>分</span>
+        <input id="wS" type="number" min="0" max="59" value="0" inputmode="numeric"><span>秒</span>
+      </div>
+      <div class="row">
+        <button class="btn" data-work="900">15分</button>
+        <button class="btn" data-work="1500">25分</button>
+        <button class="btn" data-work="3000">50分</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="label break">休憩時間</div>
+      <div class="inputs">
+        <input id="bH" type="number" min="0" max="99" value="0" inputmode="numeric"><span>時</span>
+        <input id="bM" type="number" min="0" max="59" value="5" inputmode="numeric"><span>分</span>
+        <input id="bS" type="number" min="0" max="59" value="0" inputmode="numeric"><span>秒</span>
+      </div>
+      <div class="row">
+        <button class="btn" data-break="300">5分</button>
+        <button class="btn" data-break="600">10分</button>
+        <button class="btn" data-break="900">15分</button>
+      </div>
+    </div>
+    <div class="row controls">
+      <button id="pStart" class="btn primary">スタート</button>
+      <button id="pClear" class="btn">クリア</button>
+      <button id="pSet" class="btn">セット</button>
+      <button id="pLoop" class="btn toggle" aria-pressed="false">ループ: OFF</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const display = $('display'), phaseEl = $('phase'), subEl = $('sub');
+
+  // ---------- 共通 ----------
+  let mode = 'normal';
+  let remaining = 0;      // 残り秒数（停止中）
+  let endAt = 0;          // 終了予定時刻 (ms)
+  let tickId = null;
+  let running = false;
+
+  // ポモドーロ状態
+  let phase = 'work';     // 'work' | 'break'
+  let loop = false;
+  let cycle = 1;
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (sec) => {
+    sec = Math.max(0, Math.ceil(sec));
+    return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor(sec % 3600 / 60))}:${pad(sec % 60)}`;
+  };
+  const clampInt = (v, max) => Math.min(max, Math.max(0, parseInt(v, 10) || 0));
+  const readInputs = (p) => clampInt($(p+'H').value, 99) * 3600 + clampInt($(p+'M').value, 59) * 60 + clampInt($(p+'S').value, 59);
+  const writeInputs = (p, sec) => {
+    $(p+'H').value = Math.floor(sec / 3600);
+    $(p+'M').value = Math.floor(sec % 3600 / 60);
+    $(p+'S').value = sec % 60;
+  };
+
+  function render(sec) {
+    const t = fmt(sec);
+    display.textContent = t;
+    document.title = running ? `${t} - タイマー` : 'タイマー';
+  }
+
+  function updateButtons() {
+    const label = running ? 'ストップ' : 'スタート';
+    $('nStart').textContent = label;
+    $('pStart').textContent = label;
+  }
+
+  function stopTick() {
+    if (tickId) clearInterval(tickId);
+    tickId = null;
+  }
+
+  function start() {
+    if (remaining <= 0) return false;
+    unlockAudio();
+    stopAlarm();
+    display.classList.remove('done');
+    running = true;
+    endAt = Date.now() + remaining * 1000;
+    stopTick();
+    tickId = setInterval(tick, 200);
+    tick();
+    updateButtons();
+    return true;
+  }
+
+  function stop() {
+    if (running) remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+    running = false;
+    stopTick();
+    updateButtons();
+    render(remaining);
+  }
+
+  function tick() {
+    const left = (endAt - Date.now()) / 1000;
+    if (left <= 0) {
+      remaining = 0;
+      render(0);
+      onFinish();
+    } else {
+      render(left);
+    }
+  }
+
+  function onFinish() {
+    running = false;
+    stopTick();
+    if (mode === 'normal') {
+      display.classList.add('done');
+      subEl.textContent = '時間になりました';
+      playAlarm(6);
+      updateButtons();
+      return;
+    }
+    // ポモドーロ
+    if (phase === 'work') {
+      playAlarm(3);
+      setPhase('break');
+      remaining = readInputs('b');
+      if (remaining > 0) { start(); return; }
+      // 休憩0なら次へ
+    } else {
+      playAlarm(3, true);
+    }
+    // 休憩終了
+    if (loop) {
+      cycle++;
+      setPhase('work');
+      remaining = readInputs('w');
+      start();
+    } else {
+      setPhase('work');
+      remaining = 0;
+      display.classList.add('done');
+      subEl.textContent = 'ポモドーロ終了';
+      updateButtons();
+    }
+  }
+
+  // ---------- モード切替 ----------
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      if (tab.dataset.mode === mode) return;
+      stop(); stopAlarm();
+      mode = tab.dataset.mode;
+      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+      $('normalPanel').classList.toggle('hidden', mode !== 'normal');
+      $('pomoPanel').classList.toggle('hidden', mode !== 'pomodoro');
+      if (mode === 'normal') { phaseEl.textContent = ''; phaseEl.className = 'phase'; setNormal(); }
+      else { cycle = 1; setPhase('work'); setPomo(); }
+    });
+  });
+
+  // ---------- 通常モード ----------
+  function setNormal() {
+    stop(); stopAlarm();
+    display.classList.remove('done');
+    remaining = readInputs('n');
+    subEl.textContent = '';
+    render(remaining);
+  }
+  document.querySelectorAll('[data-preset]').forEach((b) => {
+    b.addEventListener('click', () => { writeInputs('n', +b.dataset.preset); setNormal(); });
+  });
+  $('nSet').addEventListener('click', setNormal);
+  $('nStart').addEventListener('click', () => {
+    if (running) { stop(); return; }
+    if (remaining <= 0) remaining = readInputs('n');
+    subEl.textContent = '';
+    start();
+  });
+  $('nClear').addEventListener('click', () => {
+    stop(); stopAlarm();
+    display.classList.remove('done');
+    writeInputs('n', 0);
+    remaining = 0;
+    subEl.textContent = '';
+    render(0);
+  });
+
+  // ---------- ポモドーロ・モード ----------
+  function setPhase(p) {
+    phase = p;
+    phaseEl.textContent = p === 'work' ? '実行中' : '休憩中';
+    phaseEl.className = 'phase ' + p;
+    subEl.textContent = `サイクル ${cycle}` + (loop ? '（ループ中）' : '');
+  }
+  function setPomo() {
+    stop(); stopAlarm();
+    display.classList.remove('done');
+    cycle = 1;
+    setPhase('work');
+    remaining = readInputs('w');
+    render(remaining);
+  }
+  document.querySelectorAll('[data-work]').forEach((b) => {
+    b.addEventListener('click', () => { writeInputs('w', +b.dataset.work); if (phase === 'work' || !running) setPomo(); });
+  });
+  document.querySelectorAll('[data-break]').forEach((b) => {
+    b.addEventListener('click', () => { writeInputs('b', +b.dataset.break); if (!running) setPomo(); });
+  });
+  $('pSet').addEventListener('click', setPomo);
+  $('pStart').addEventListener('click', () => {
+    if (running) { stop(); return; }
+    if (remaining <= 0) { cycle = 1; setPhase('work'); remaining = readInputs('w'); }
+    setPhase(phase);
+    start();
+  });
+  $('pClear').addEventListener('click', () => {
+    stop(); stopAlarm();
+    display.classList.remove('done');
+    cycle = 1;
+    setPhase('work');
+    remaining = 0;
+    render(0);
+  });
+  $('pLoop').addEventListener('click', () => {
+    loop = !loop;
+    const b = $('pLoop');
+    b.classList.toggle('on', loop);
+    b.setAttribute('aria-pressed', loop);
+    b.textContent = `ループ: ${loop ? 'ON' : 'OFF'}`;
+    setPhase(phase);
+  });
+
+  // 入力欄でEnter → セット
+  document.querySelectorAll('.inputs input').forEach((inp) => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') (mode === 'normal' ? setNormal : setPomo)();
+    });
+  });
+
+  // ---------- アラーム (Web Audio API) ----------
+  let ctx = null;
+  let alarmNodes = [];
+  function unlockAudio() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) ctx = new AC();
+    }
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+  }
+  function beep(t, freq, dur) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+    alarmNodes.push(osc);
+  }
+  // repeats: ピピピッ を何回鳴らすか / low: 休憩終了用に音程を変える
+  function playAlarm(repeats, low = false) {
+    unlockAudio();
+    if (!ctx) return;
+    const f = low ? 660 : 880;
+    let t = ctx.currentTime + 0.05;
+    for (let r = 0; r < repeats; r++) {
+      for (let i = 0; i < 4; i++) { beep(t, f, 0.12); t += 0.16; }
+      t += 0.5;
+    }
+  }
+  function stopAlarm() {
+    alarmNodes.forEach((o) => { try { o.stop(); } catch (_) {} });
+    alarmNodes = [];
+  }
+  // 終了表示中に画面をクリックしたらアラーム停止
+  display.addEventListener('click', () => { stopAlarm(); display.classList.remove('done'); });
+
+  // 初期表示
+  setNormal();
+})();
+</script>
+</body>
+</html>
