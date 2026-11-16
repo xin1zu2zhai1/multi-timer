@@ -223,10 +223,11 @@
     tickId = null;
   }
 
-  function start() {
+  // auto=true: ポモドーロの自動切替（鳴っているアラームを止めない）
+  function start(auto = false) {
     if (remaining <= 0) return false;
     unlockAudio();
-    stopAlarm();
+    if (!auto) stopAlarm();
     display.classList.remove('done');
     running = true;
     endAt = Date.now() + remaining * 1000;
@@ -268,20 +269,20 @@
     }
     // ポモドーロ
     if (phase === 'work') {
-      playAlarm(3);
+      playWorkEnd();
       setPhase('break');
       remaining = readInputs('b');
-      if (remaining > 0) { start(); return; }
+      if (remaining > 0) { start(true); return; }
       // 休憩0なら次へ
     } else {
-      playAlarm(3, true);
+      playBreakEnd();
     }
     // 休憩終了
     if (loop) {
       cycle++;
       setPhase('work');
       remaining = readInputs('w');
-      start();
+      start(true);
     } else {
       setPhase('work');
       remaining = 0;
@@ -394,10 +395,10 @@
     }
     if (ctx && ctx.state === 'suspended') ctx.resume();
   }
-  function beep(t, freq, dur) {
+  function beep(t, freq, dur, type = 'square') {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'square';
+    osc.type = type;
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
@@ -417,6 +418,24 @@
       for (let i = 0; i < 4; i++) { beep(t, f, 0.12); t += 0.16; }
       t += 0.5;
     }
+  }
+  // ポモドーロ用の短いアラーム（約1秒で自動的に止まる）
+  // 実行終了 → 休憩へ：上昇する明るい3音「ピロリン」
+  function playWorkEnd() {
+    unlockAudio();
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.05;
+    beep(t, 784, 0.18, 'sine');          // ソ
+    beep(t + 0.18, 988, 0.18, 'sine');   // シ
+    beep(t + 0.36, 1319, 0.45, 'sine');  // ミ
+  }
+  // 休憩終了 → 実行へ：低めの「ポーン、ポーン」
+  function playBreakEnd() {
+    unlockAudio();
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.05;
+    beep(t, 523, 0.35, 'triangle');        // ド
+    beep(t + 0.45, 523, 0.5, 'triangle');  // ド
   }
   function stopAlarm() {
     alarmNodes.forEach((o) => { try { o.stop(); } catch (_) {} });
