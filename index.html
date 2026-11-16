@@ -238,7 +238,27 @@
     return true;
   }
 
+  // ポモドーロのフェーズ切替時、アラームの間（1秒）00:00:00 を表示してから次へ進む
+  const HOLD_MS = 1000;
+  let hold = null; // { id, apply }
+  function holdThen(apply) {
+    running = true;
+    updateButtons();
+    hold = { apply, id: setTimeout(() => { hold = null; apply(); start(true); }, HOLD_MS) };
+  }
+
   function stop() {
+    if (hold) {
+      // 待機中に止めた場合は、次のフェーズの先頭で停止する
+      const h = hold; hold = null;
+      clearTimeout(h.id);
+      h.apply();
+      running = false;
+      stopTick();
+      updateButtons();
+      render(remaining);
+      return;
+    }
     if (running) remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
     running = false;
     stopTick();
@@ -270,19 +290,19 @@
     // ポモドーロ
     if (phase === 'work') {
       playWorkEnd();
-      setPhase('break');
-      remaining = readInputs('b');
-      if (remaining > 0) { start(true); return; }
+      const b = readInputs('b');
+      if (b > 0) {
+        holdThen(() => { setPhase('break'); remaining = b; });
+        return;
+      }
       // 休憩0なら次へ
     } else {
       playBreakEnd();
     }
     // 休憩終了
     if (loop) {
-      cycle++;
-      setPhase('work');
-      remaining = readInputs('w');
-      start(true);
+      const w = readInputs('w');
+      holdThen(() => { cycle++; setPhase('work'); remaining = w; });
     } else {
       setPhase('work');
       remaining = 0;
