@@ -58,7 +58,7 @@
     padding: 10px 4px; border-radius: 8px; font-size: 0.95rem; cursor: pointer; font-weight: 600;
     white-space: nowrap;
   }
-  @media (max-width: 420px) { .tab { font-size: 0.85rem; } }
+  @media (max-width: 420px) { .tab { font-size: 0.8rem; } }
   .tab.active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 
   .phase { text-align: center; font-weight: 700; height: 1.5em; letter-spacing: .05em; }
@@ -101,6 +101,20 @@
   button.btn.primary:hover { filter: brightness(1.08); }
   button.btn.toggle.on { background: var(--break); border-color: var(--break); color: #fff; }
   .controls { margin-top: 20px; }
+  button.btn:disabled { opacity: .45; cursor: default; }
+  button.btn:disabled:hover { background: var(--btn); }
+  .display.sw { font-size: clamp(2.5rem, 12.5vw, 4.75rem); }
+  .display .ms { font-size: .45em; color: var(--muted); }
+  .inputs input.narrow { width: 52px; }
+  .note { text-align: center; color: var(--muted); font-size: .8rem; margin-top: 8px; min-height: 1.2em; }
+  .footer { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 16px; text-align: center; }
+  button.btn.small { padding: 6px 12px; font-size: .85rem; }
+
+  .laps { list-style: none; margin: 16px 0 0; padding: 0; max-height: 260px; overflow-y: auto;
+          border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .laps li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: .95rem; }
+  .laps li .n { color: var(--muted); min-width: 4.5em; }
+  .laps li .t { color: var(--muted); }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -110,7 +124,8 @@
 
   <div class="tabs" role="tablist">
     <button class="tab active" data-mode="normal" role="tab">通常モード</button>
-    <button class="tab" data-mode="pomodoro" role="tab">ポモドーロ・モード</button>
+    <button class="tab" data-mode="pomodoro" role="tab">ポモドーロ</button>
+    <button class="tab" data-mode="stopwatch" role="tab">ストップウォッチ</button>
   </div>
 
   <div id="phase" class="phase"></div>
@@ -167,6 +182,25 @@
         <button class="btn" data-break="900">15分</button>
       </div>
     </div>
+    <div class="section">
+      <div class="label break">長い休憩</div>
+      <div class="inputs">
+        <input id="lH" type="number" min="0" max="99" value="0" inputmode="numeric"><span>時</span>
+        <input id="lM" type="number" min="0" max="59" value="15" inputmode="numeric"><span>分</span>
+        <input id="lS" type="number" min="0" max="59" value="0" inputmode="numeric"><span>秒</span>
+      </div>
+      <div class="row">
+        <button class="btn" data-long="900">15分</button>
+        <button class="btn" data-long="1200">20分</button>
+        <button class="btn" data-long="1800">30分</button>
+      </div>
+      <div class="inputs" style="margin-top:12px">
+        <span>実行</span>
+        <input id="lEvery" class="narrow" type="number" min="0" max="99" value="4" inputmode="numeric">
+        <span>回ごとに長い休憩</span>
+      </div>
+      <div class="note" style="margin-top:0">0回、または長い休憩を0分にすると無効になります</div>
+    </div>
     <div class="row controls">
       <button id="pStart" class="btn primary">スタート</button>
       <button id="pClear" class="btn">クリア</button>
@@ -174,6 +208,21 @@
       <button id="pLoop" class="btn toggle" aria-pressed="false">ループ: OFF</button>
     </div>
   </section>
+
+  <!-- ストップウォッチ -->
+  <section id="swPanel" class="hidden">
+    <div class="row controls">
+      <button id="swStart" class="btn primary">スタート</button>
+      <button id="swClear" class="btn">クリア</button>
+      <button id="swLap" class="btn" disabled>ラップ</button>
+    </div>
+    <ol id="laps" class="laps"></ol>
+  </section>
+
+  <div class="footer">
+    <button id="notifyBtn" class="btn toggle small" aria-pressed="false">デスクトップ通知: OFF</button>
+    <div id="notifyMsg" class="note"></div>
+  </div>
 </main>
 
 <script>
@@ -284,15 +333,19 @@
       display.classList.add('done');
       subEl.textContent = '時間になりました';
       playAlarm(6);
+      notify('時間になりました', 'タイマーが終了しました');
       updateButtons();
       return;
     }
     // ポモドーロ
     if (phase === 'work') {
       playWorkEnd();
-      const b = readInputs('b');
+      const isLong = longDue();
+      const b = isLong ? readInputs('l') : readInputs('b');
       if (b > 0) {
-        holdThen(() => { setPhase('break'); remaining = b; });
+        const name = isLong ? '長い休憩' : '休憩';
+        notify(`${name}に入ります`, `サイクル ${cycle} の実行が終わりました（${name} ${fmtLen(b)}）`);
+        holdThen(() => { setPhase(isLong ? 'long' : 'break'); remaining = b; });
         return;
       }
       // 休憩0なら次へ
@@ -302,12 +355,14 @@
     // 休憩終了
     if (loop) {
       const w = readInputs('w');
+      notify('実行を開始します', `サイクル ${cycle + 1}（${fmtLen(w)}）`);
       holdThen(() => { cycle++; setPhase('work'); remaining = w; });
     } else {
       setPhase('work');
       remaining = 0;
       display.classList.add('done');
       subEl.textContent = 'ポモドーロ終了';
+      notify('ポモドーロ終了', 'お疲れさまでした');
       updateButtons();
     }
   }
@@ -316,13 +371,18 @@
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       if (tab.dataset.mode === mode) return;
-      stop(); stopAlarm();
+      stop(); swPause(); stopAlarm();
       mode = tab.dataset.mode;
       document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
       $('normalPanel').classList.toggle('hidden', mode !== 'normal');
       $('pomoPanel').classList.toggle('hidden', mode !== 'pomodoro');
-      if (mode === 'normal') { phaseEl.textContent = ''; phaseEl.className = 'phase'; setNormal(); }
-      else { cycle = 1; setPhase('work'); setPomo(); }
+      $('swPanel').classList.toggle('hidden', mode !== 'stopwatch');
+      display.classList.remove('done');
+      display.classList.toggle('sw', mode === 'stopwatch');
+      if (mode === 'pomodoro') { cycle = 1; setPhase('work'); setPomo(); return; }
+      phaseEl.textContent = ''; phaseEl.className = 'phase';
+      if (mode === 'normal') setNormal();
+      else { subEl.textContent = ''; swRender(); }
     });
   });
 
@@ -354,11 +414,23 @@
   });
 
   // ---------- ポモドーロ・モード ----------
+  const PHASE_LABEL = { work: '実行中', break: '休憩中', long: '長い休憩中' };
+  function longEvery() {
+    const every = clampInt($('lEvery').value, 99);
+    return every > 0 && readInputs('l') > 0 ? every : 0;
+  }
+  // 今のサイクルの実行が終わったら長い休憩か
+  function longDue() {
+    const every = longEvery();
+    return every > 0 && cycle % every === 0;
+  }
   function setPhase(p) {
     phase = p;
-    phaseEl.textContent = p === 'work' ? '実行中' : '休憩中';
-    phaseEl.className = 'phase ' + p;
-    subEl.textContent = `サイクル ${cycle}` + (loop ? '（ループ中）' : '');
+    phaseEl.textContent = PHASE_LABEL[p];
+    phaseEl.className = 'phase ' + (p === 'long' ? 'break' : p);
+    const every = longEvery();
+    const pos = every ? `　長い休憩まで ${(cycle - 1) % every + 1}/${every}` : '';
+    subEl.textContent = `サイクル ${cycle}` + (loop ? '（ループ中）' : '') + pos;
   }
   function setPomo() {
     stop(); stopAlarm();
@@ -371,10 +443,15 @@
   document.querySelectorAll('[data-work]').forEach((b) => {
     b.addEventListener('click', () => { writeInputs('w', +b.dataset.work); if (phase === 'work' || !running) setPomo(); });
   });
+  document.querySelectorAll('[data-long]').forEach((b) => {
+    b.addEventListener('click', () => { writeInputs('l', +b.dataset.long); if (!running) setPomo(); });
+  });
   document.querySelectorAll('[data-break]').forEach((b) => {
     b.addEventListener('click', () => { writeInputs('b', +b.dataset.break); if (!running) setPomo(); });
   });
   $('pSet').addEventListener('click', setPomo);
+  // 長い休憩の設定を変えたら、サイクル表示を更新
+  ['lEvery', 'lH', 'lM', 'lS'].forEach((id) => $(id).addEventListener('input', () => { if (mode === 'pomodoro') setPhase(phase); }));
   $('pStart').addEventListener('click', () => {
     if (running) { stop(); return; }
     if (remaining <= 0) { cycle = 1; setPhase('work'); remaining = readInputs('w'); }
@@ -464,7 +541,113 @@
   // 終了表示中に画面をクリックしたらアラーム停止
   display.addEventListener('click', () => { stopAlarm(); display.classList.remove('done'); });
 
+  // ---------- ストップウォッチ ----------
+  let swElapsed = 0;     // 停止までに経過したミリ秒
+  let swStartAt = 0;
+  let swRunning = false;
+  let swId = null;
+  let laps = [];         // 各ラップ時点の合計ミリ秒
+  const swNow = () => swElapsed + (swRunning ? Date.now() - swStartAt : 0);
+  function splitMs(ms) {
+    const cs = Math.floor(ms / 10) % 100;
+    const sec = Math.floor(ms / 1000);
+    return [fmt(sec), pad(cs)];
+  }
+  function swRender() {
+    if (mode !== 'stopwatch') return;
+    const [hms, cs] = splitMs(swNow());
+    display.innerHTML = `${hms}<span class="ms">.${cs}</span>`;
+    document.title = swRunning ? `${hms} - ストップウォッチ` : 'タイマー';
+  }
+  function swUpdateButtons() {
+    $('swStart').textContent = swRunning ? 'ストップ' : 'スタート';
+    $('swLap').disabled = !swRunning;
+  }
+  function swPause() {
+    if (!swRunning) return;
+    swElapsed = swNow();
+    swRunning = false;
+    clearInterval(swId); swId = null;
+    swUpdateButtons();
+    swRender();
+  }
+  function renderLaps() {
+    const list = $('laps');
+    list.innerHTML = '';
+    for (let i = laps.length - 1; i >= 0; i--) {
+      const lap = laps[i] - (i ? laps[i - 1] : 0);
+      const [lh, lc] = splitMs(lap), [th, tc] = splitMs(laps[i]);
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="n">ラップ ${i + 1}</span><span>${lh}.${lc}</span><span class="t">${th}.${tc}</span>`;
+      list.appendChild(li);
+    }
+  }
+  $('swStart').addEventListener('click', () => {
+    if (swRunning) { swPause(); return; }
+    swStartAt = Date.now();
+    swRunning = true;
+    swId = setInterval(swRender, 31);
+    swUpdateButtons();
+    swRender();
+  });
+  $('swClear').addEventListener('click', () => {
+    swPause();
+    swElapsed = 0;
+    laps = [];
+    renderLaps();
+    swRender();
+  });
+  $('swLap').addEventListener('click', () => {
+    if (!swRunning) return;
+    laps.push(swNow());
+    renderLaps();
+  });
+
+  // ---------- デスクトップ通知 ----------
+  const notifyBtn = $('notifyBtn'), notifyMsg = $('notifyMsg');
+  const canNotify = 'Notification' in window;
+  let notifyOn = false;
+  try { notifyOn = localStorage.getItem('multiTimer.notify') === '1'; } catch (_) {}
+  function saveNotify() {
+    try { localStorage.setItem('multiTimer.notify', notifyOn ? '1' : '0'); } catch (_) {}
+  }
+  function updateNotifyBtn() {
+    const on = notifyOn && canNotify && Notification.permission === 'granted';
+    notifyBtn.classList.toggle('on', on);
+    notifyBtn.setAttribute('aria-pressed', on);
+    notifyBtn.textContent = `デスクトップ通知: ${on ? 'ON' : 'OFF'}`;
+    if (!canNotify) notifyMsg.textContent = 'このブラウザは通知に対応していません';
+    else if (Notification.permission === 'denied') notifyMsg.textContent = '通知がブロックされています。ブラウザのサイト設定で許可してください';
+    else notifyMsg.textContent = on ? 'タイマーの終了やフェーズの切り替えを通知します' : '';
+  }
+  notifyBtn.addEventListener('click', async () => {
+    if (!canNotify) { updateNotifyBtn(); return; }
+    if (notifyOn && Notification.permission === 'granted') {
+      notifyOn = false;
+    } else if (Notification.permission === 'granted') {
+      notifyOn = true;
+    } else if (Notification.permission === 'default') {
+      const p = await Notification.requestPermission();
+      notifyOn = p === 'granted';
+    }
+    saveNotify();
+    updateNotifyBtn();
+  });
+  function notify(title, body) {
+    if (!notifyOn || !canNotify || Notification.permission !== 'granted') return;
+    try {
+      const n = new Notification(title, { body, tag: 'multi-timer' });
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch (_) { /* スマホなど new Notification が使えない環境では何もしない */ }
+  }
+  // 「25分」「1時間30分」のような表記
+  function fmtLen(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    return (h ? `${h}時間` : '') + (m ? `${m}分` : '') + (s ? `${s}秒` : '') || '0秒';
+  }
+
   // 初期表示
+  updateNotifyBtn();
   setNormal();
 })();
 </script>
